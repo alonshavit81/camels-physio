@@ -20,6 +20,13 @@ Mobile-first web app for the team's physiotherapists: work-day attendance and te
 - If the phone is in Private Browsing or storage is blocked, a yellow banner warns that data is not being saved. Export after each session.
 - Backups are UTF-8 JSON; Hebrew text is safe.
 
+## Where it lives
+
+- App: **https://alonshavit81.github.io/camels-physio/** (open it in Safari on the phone, then Share → *Add to Home Screen*).
+- Source: https://github.com/alonshavit81/camels-physio
+
+Every push to `main` runs `.github/workflows/deploy.yml` (install, tests, build) and publishes `dist/` to GitHub Pages. Phones pick up the new version the next time they open the app; their data stays on the phone.
+
 ## Development
 
 ```bash
