@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fee2e2;
+  --color-brand-200: #fecaca;
+  --color-brand-300: #fca5a5;
+  --color-brand-500: #ef4444;
+  --color-brand-600: #dc2626;
+  --color-brand-700: #b91c1c;
+  --color-brand-800: #991b1b;
+
+  --color-user-shahar: #2563eb;
+  --color-user-maya: #16a34a;
+  --color-user-neta: #7c3aed;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    overscroll-behavior-y: none;
+  }
+  input, select, textarea, button {
+    font: inherit;
+  }
+  /* 16px minimum stops iOS Safari from zooming into focused form controls. */
+  input, select, textarea {
+    font-size: 16px;
+  }
+  button, [role="button"] {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  dialog::backdrop {
+    background: rgb(0 0 0 / 0.45);
+  }
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-nav {
+  /* bottom nav height + safe area */
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+/* Safe-area padding that ADDS to a normal spacing step (pb-safe alone would override py-*). */
+@utility pb-safe-* {
+  padding-bottom: calc(--spacing(--value(integer)) + env(safe-area-inset-bottom));
+}
+@utility pt-safe-* {
+  padding-top: calc(--spacing(--value(integer)) + env(safe-area-inset-top));
+}
+/* Chevron for <Select>. Kept here because an arbitrary bg-[url(...)] with spaces is split into several class tokens and dropped. */
+@utility select-chevron {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-size: 16px 16px;
+  background-position: right 0.75rem center;
+  background-repeat: no-repeat;
+}
