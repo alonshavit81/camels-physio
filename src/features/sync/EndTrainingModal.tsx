@@ -5,6 +5,8 @@ import { Modal } from '../../components/ui/Modal'
 import { backupFilename, serializeExport } from '../../lib/backup'
 import { canShareFiles, downloadBackup, isStandaloneDisplay, shareBackup, type DownloadOutcome } from '../../lib/backupFile'
 import { cn } from '../../lib/cn'
+import { formatMonthTitle, currentMonthKey } from '../../lib/dates'
+import type { ApplyResult } from '../../lib/types'
 import { userName } from '../../lib/users'
 import { useAppStore } from '../../store/useAppStore'
 import { liveInjuries } from '../../store/selectors'
@@ -40,8 +42,9 @@ const DOWNLOAD_MESSAGES: Record<DownloadOutcome, Message> = {
 }
 
 /** "End Training": export this phone's data as a JSON backup for the WhatsApp group. */
-export function EndTrainingModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function EndTrainingModal({ open, onClose, applyResult = null }: { open: boolean; onClose: () => void; applyResult?: ApplyResult | null }) {
   const exportSnapshot = useAppStore((s) => s.exportSnapshot)
+  const markExported = useAppStore((s) => s.markExported)
   const currentUserId = useAppStore((s) => s.currentUserId)
   const playerCount = useAppStore((s) => Object.values(s.players).filter((p) => !p.deleted).length)
   const sessionCount = useAppStore((s) => Object.keys(s.sessions).length)
@@ -71,7 +74,9 @@ export function EndTrainingModal({ open, onClose }: { open: boolean; onClose: ()
     const outcome = downloadBackup(json, name)
     const m = DOWNLOAD_MESSAGES[outcome]
     // Only a real download / new tab has a saved file worth naming; a preview may not have saved anything.
-    setMessage(outcome === 'downloaded' || outcome === 'opened' ? { ...m, text: `${m.text} (${name})` } : m)
+    const saved = outcome === 'downloaded' || outcome === 'opened'
+    if (saved) markExported()
+    setMessage(saved ? { ...m, text: `${m.text} (${name})` } : m)
   }
 
   async function doShare() {
@@ -80,7 +85,10 @@ export function EndTrainingModal({ open, onClose }: { open: boolean; onClose: ()
     setBusy(true)
     try {
       const outcome = await shareBackup(json, name)
-      if (outcome === 'shared') setMessage({ tone: 'success', text: `Shared ${name}. Make sure it reached the WhatsApp group.` })
+      if (outcome === 'shared') {
+        markExported()
+        setMessage({ tone: 'success', text: `Shared ${name}. Make sure it reached the WhatsApp group.` })
+      }
       else if (outcome === 'cancelled') setMessage({ tone: 'warning', text: 'Share cancelled. Nothing was sent.' })
       else if (outcome === 'failed')
         setMessage({
@@ -112,6 +120,8 @@ export function EndTrainingModal({ open, onClose }: { open: boolean; onClose: ()
         </ol>
       </div>
 
+      {applyResult && <ApplySummary result={applyResult} />}
+
       <div className="mt-5 flex flex-col gap-3">
         {shareSupported && (
           <Button full onClick={doShare} disabled={busy}>
@@ -141,5 +151,21 @@ export function EndTrainingModal({ open, onClose }: { open: boolean; onClose: ()
         {message?.text ?? ''}
       </p>
     </Modal>
+  )
+}
+
+/** What the automatic "Apply Monthly Attendance" did when 🏁 was tapped. */
+function ApplySummary({ result }: { result: ApplyResult }) {
+  const month = formatMonthTitle(currentMonthKey())
+  const total = result.created + result.updated + result.unchanged + result.pruned
+  if (total === 0) return null
+  const parts: string[] = []
+  if (result.created) parts.push(`${result.created} new`)
+  if (result.updated) parts.push(`${result.updated} refreshed`)
+  if (result.pruned) parts.push(`${result.pruned} empty session${result.pruned === 1 ? '' : 's'} removed`)
+  return (
+    <p className="mt-3 text-sm text-gray-600">
+      Sessions for {month} are up to date{parts.length ? ` (${parts.join(', ')})` : ''} and are included in this backup.
+    </p>
   )
 }

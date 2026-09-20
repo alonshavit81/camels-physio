@@ -10,7 +10,13 @@ Mobile-first web app for the team's physiotherapists: work-day attendance and te
    - **Calendar**: *Team Events* mode (only Shahar can tap: Training → Game → clear) and *My Attendance* mode (tap the days you worked, your coloured dot appears). The stats card counts each physio's work days. **Apply Monthly Attendance** creates one editable session for every training, game or work day of the month and opens the Sessions tab.
    - **Players**: the roster with profile fields (name, number, fitness level, body structure, body type, past injuries, range of motion, strengthening exercises) plus an *Injury log* that is filled automatically from session reports.
    - **Sessions**: every generated session. Inside a session mark each player Present / Absent / Injured and report injuries. An injury reported here appears instantly in the player's profile and in the injury statistics.
-4. **🏁 End Training**: export the backup. On iPhone prefer **Share JSON to WhatsApp** (opens the share sheet straight into the group); **Download JSON** saves to Files › Downloads.
+4. **🏁 End Training**: the app first makes sure this month's sessions exist (the same as Apply Monthly Attendance), then offers the backup. On iPhone prefer **Share JSON to WhatsApp** (opens the share sheet straight into the group); **Download JSON** saves to Files › Downloads.
+
+The app helps you not forget a step:
+
+- The red bar under the header shows the last import ("Import: Neta · 2 days ago"); tap it to import. The 🏁 button carries a small dot while this phone has changes that were not exported yet.
+- If this phone has activity newer than its last import or export, a blue "You may be behind" notice offers to import; *Not now* hides it for the day.
+- On a training or game day the app opens directly on that day's session. A session opened on the day (or the day after) starts with everyone marked present, so you only tap the absent or injured players. Older and future untouched sessions stay unmarked. These default marks are generated data, so any real mark from another phone, even an earlier one, wins on import; reporting an injury inside a session turns a Present mark into Injured.
 
 ## iPhone notes
 

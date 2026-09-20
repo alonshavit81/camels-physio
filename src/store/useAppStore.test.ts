@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { sessionIsEmpty } from '../lib/apply'
+import { DEFAULT_ATTENDANCE_STAMP, sessionIsEmpty } from '../lib/apply'
 import { sessionIdFor } from '../lib/ids'
 import { SEED_PLAYER_IDS, buildSeedPlayers, seedPlayerId } from '../lib/seedPlayers'
 import { SCHEMA_VERSION, emptyPersistedState, type BackupEnvelope, type Injury, type PersistedState, type Player } from '../lib/types'
@@ -314,6 +314,36 @@ describe('deletePlayer', () => {
     useAppStore.getState().setCurrentUser('maya')
     expect(useAppStore.getState().deletePlayer(seedPlayerId('Cohen Uri'))).toBe(false)
     expect(useAppStore.getState().players[seedPlayerId('Cohen Uri')]?.deleted).toBe(false)
+  })
+})
+
+// ---------------------------------------------- addInjury inside a session
+
+describe('addInjury inside a session', () => {
+  it('turns an Unset or Present mark (including the default one) into Injured and leaves Absent alone', async () => {
+    const { useAppStore } = await loadStore()
+    const st = () => useAppStore.getState()
+    st().setCurrentUser('maya')
+    st().toggleWorkDay('2026-09-19')
+    st().applyMonthlyAttendance('2026-09')
+    const sid = sessionIdFor('2026-09-19')
+    st().defaultAttendancePresent(sid, SEED_PLAYER_IDS)
+    const defaulted = seedPlayerId('Cohen Uri')
+    const absent = seedPlayerId('Tom Curtis')
+    const unset = seedPlayerId('Shalev Aharoni')
+    st().setPlayerSessionStatus(sid, absent, 'absent')
+    st().setPlayerSessionStatus(sid, unset, 'unset')
+    const fields = { sessionId: sid, date: '2026-09-19', bodyPart: 'Knee', side: null, severity: 'Low', status: 'Active', description: '' } as const
+    for (const playerId of [defaulted, absent, unset]) expect(st().addInjury({ playerId, ...fields })).not.toBeNull()
+
+    const att = st().sessions[sid]!.playerAttendance
+    expect(att[defaulted]).toMatchObject({ status: 'injured', updatedBy: 'maya' })
+    expect(att[defaulted]!.updatedAt > DEFAULT_ATTENDANCE_STAMP).toBe(true)
+    expect(att[unset]).toMatchObject({ status: 'injured' })
+    expect(att[absent]).toMatchObject({ status: 'absent' })
+    for (const id of SEED_PLAYER_IDS) {
+      if (![defaulted, absent, unset].includes(id)) expect(att[id]).toMatchObject({ status: 'present', updatedAt: DEFAULT_ATTENDANCE_STAMP })
+    }
   })
 })
 

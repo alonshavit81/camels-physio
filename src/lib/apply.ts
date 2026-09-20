@@ -50,6 +50,16 @@ import { SEED_EPOCH } from './seedPlayers'
  */
 export const BLANK_NOTES_STAMP: Stamp = SEED_EPOCH
 
+/**
+ * Stamp of the attendance marks a session gets when it is opened on the day
+ * and nobody has marked anyone yet ("everyone present, tap the exceptions").
+ * Like the blank notes, those marks are generated data, not a physio's record,
+ * so they must never beat a real mark from another phone, even an earlier one:
+ * the far-past stamp loses against any real stamp in a merge, and a tap on top
+ * of a default mark takes the real time (nextStamp), which wins from then on.
+ */
+export const DEFAULT_ATTENDANCE_STAMP: Stamp = BLANK_NOTES_STAMP
+
 /** Non-null object check for records that may have slipped past validation. */
 function isRecord(value: unknown): value is object {
   return typeof value === 'object' && value !== null

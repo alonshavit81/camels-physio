@@ -47,7 +47,7 @@ export function StartTrainingModal({ open, onClose }: { open: boolean; onClose: 
         setOutcome({ ok: false, fileName: file.name, message: parsed.error })
         return
       }
-      const summary = importData(parsed.envelope)
+      const summary = importData(parsed.envelope, 'newest', file.name)
       // No toast here: the sheet stays open (a toast would sit inert behind the
       // dialog backdrop) and the summary below already says what happened.
       setOutcome({

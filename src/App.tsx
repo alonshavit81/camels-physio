@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from 'react-router'
+import { useEffect } from 'react'
+import { Navigate, Route, Routes, useNavigate } from 'react-router'
 import { AppShell } from './components/layout/AppShell'
 import { UserGate } from './features/auth/UserGate'
 import { CalendarPage } from './features/calendar/CalendarPage'
@@ -6,6 +7,8 @@ import { PlayersPage } from './features/players/PlayersPage'
 import { PlayerProfilePage } from './features/players/PlayerProfilePage'
 import { SessionsPage } from './features/sessions/SessionsPage'
 import { SessionDetailPage } from './features/sessions/SessionDetailPage'
+import { todayKey } from './lib/dates'
+import { homeTarget } from './lib/sync'
 import { useAppStore } from './store/useAppStore'
 
 export default function App() {
@@ -26,7 +29,7 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<Navigate to="/calendar" replace />} />
+        <Route index element={<HomeRedirect />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="players" element={<PlayersPage />} />
         <Route path="players/:playerId" element={<PlayerProfilePage />} />
@@ -36,4 +39,20 @@ export default function App() {
       </Route>
     </Routes>
   )
+}
+
+/**
+ * Landing screen: today's session on a training or game day (created on the
+ * way if Apply has not run yet), otherwise the calendar. Only the index route
+ * does this; the Calendar tab itself always shows the calendar.
+ */
+function HomeRedirect() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    const store = useAppStore.getState()
+    const target = homeTarget(store, todayKey())
+    if (target.applyMonth) store.applyMonthlyAttendance(target.applyMonth)
+    navigate(target.path, { replace: true })
+  }, [navigate])
+  return null
 }

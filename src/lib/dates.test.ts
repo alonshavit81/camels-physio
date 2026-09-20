@@ -436,3 +436,22 @@ describe('nextStamp', () => {
     expect(nextStamp('Sep 13 275760 00:00:00 GMT')).toBe(NOW)
   })
 })
+
+describe('formatRelative', () => {
+  const now = new Date(2026, 8, 20, 12, 0, 0) // local noon, 20 Sep 2026
+  const at = (d: Date) => d.toISOString()
+  it('describes recent stamps in minutes and hours', async () => {
+    const { formatRelative } = await import('./dates')
+    expect(formatRelative(at(new Date(now.getTime() - 20_000)), now)).toBe('just now')
+    expect(formatRelative(at(new Date(now.getTime() + 60_000)), now)).toBe('just now')
+    expect(formatRelative(at(new Date(now.getTime() - 5 * 60_000)), now)).toBe('5 min ago')
+    expect(formatRelative(at(new Date(now.getTime() - 3 * 3_600_000)), now)).toBe('3 h ago')
+  })
+  it('switches to calendar days, then to a date after a week', async () => {
+    const { formatRelative } = await import('./dates')
+    expect(formatRelative(at(new Date(2026, 8, 19, 23, 30)), now)).toBe('yesterday')
+    expect(formatRelative(at(new Date(2026, 8, 16, 9, 0)), now)).toBe('4 days ago')
+    expect(formatRelative(at(new Date(2026, 8, 1, 9, 0)), now)).toBe('1 Sep 2026')
+    expect(formatRelative('not a date', now)).toBe('not a date')
+  })
+})

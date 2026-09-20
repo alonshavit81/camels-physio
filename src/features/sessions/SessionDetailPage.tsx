@@ -9,7 +9,8 @@ import { SectionTitle } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { UserChip } from '../../components/ui/UserDot'
 import { isSessionOnCalendar } from '../../lib/apply'
-import { formatDateFull } from '../../lib/dates'
+import { formatDateFull, todayKey } from '../../lib/dates'
+import { shouldDefaultToPresent } from '../../lib/sync'
 import type { AttendanceStatus, Injury, Session } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useInjuriesForSession, usePlayersSorted, useSession, usersWorkedOn } from '../../store/selectors'
@@ -62,6 +63,8 @@ function SessionDetail({ session }: { session: Session }) {
   const workedPhysios = useAppStore(useShallow((s) => usersWorkedOn(s.workDays, session.date)))
   const onCalendar = useAppStore((s) => isSessionOnCalendar(s, session))
   const setPlayerSessionStatus = useAppStore((s) => s.setPlayerSessionStatus)
+  const setManyPlayerSessionStatus = useAppStore((s) => s.setManyPlayerSessionStatus)
+  const defaultAttendancePresent = useAppStore((s) => s.defaultAttendancePresent)
 
   const physios = workedPhysios.length > 0 ? workedPhysios : session.physios
 
@@ -83,9 +86,35 @@ function SessionDetail({ session }: { session: Session }) {
 
   const [formTarget, setFormTarget] = useState<InjuryFormTarget | null>(null)
 
+  // Absence-only marking: a session opened on the day (or the day after) that
+  // nobody has touched yet starts with everyone present; the physio taps only
+  // the absent or injured players. A session with any mark, even a cleared one,
+  // is left alone, and so are older and future sessions (see
+  // shouldDefaultToPresent). The default marks are generated data with a
+  // far-past stamp, so a real mark from another phone always wins on import.
+  const untouched = Object.keys(session.playerAttendance).length === 0
+  useEffect(() => {
+    if (!untouched || players.length === 0 || !shouldDefaultToPresent(session.date, todayKey())) return
+    // Re-check the live store: StrictMode re-runs effects in development, and a
+    // second phone's import can land between render and effect.
+    const live = useAppStore.getState().sessions[session.id]
+    if (!live || Object.keys(live.playerAttendance).length > 0) return
+    defaultAttendancePresent(
+      session.id,
+      players.map((p) => p.id),
+    )
+    toast.info('Everyone marked present. Tap only the absent or injured players.', 5000)
+    // Run once per session open, not on every roster change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id])
+
   function markUnmarkedPresent() {
     const unmarked = players.filter((p) => (session.playerAttendance[p.id]?.status ?? 'unset') === 'unset')
-    for (const p of unmarked) setPlayerSessionStatus(session.id, p.id, 'present')
+    setManyPlayerSessionStatus(
+      session.id,
+      unmarked.map((p) => p.id),
+      'present',
+    )
     toast.success(`${unmarked.length} ${unmarked.length === 1 ? 'player' : 'players'} marked present`)
   }
 

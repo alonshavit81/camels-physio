@@ -221,3 +221,12 @@ export interface ApplyResult {
 // ----------------------------------------------------------------- misc
 export const CALENDAR_MODES = ['team', 'me'] as const
 export type CalendarMode = (typeof CALENDAR_MODES)[number]
+
+// ------------------------------------------------------------------ sync
+/** Shape of the per-device sync bookkeeping (see lib/sync.ts); persisted, never exported. */
+export interface SyncStateLike {
+  lastImport: { at: Stamp; by: UserId | null; fileName: string } | null
+  lastExportAt: Stamp | null
+  dirtySinceExport: boolean
+  reminderDismissedOn: DateKey | null
+}

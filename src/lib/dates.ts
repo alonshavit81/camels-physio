@@ -1,5 +1,6 @@
 import {
   addMonths,
+  differenceInCalendarDays,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -137,4 +138,25 @@ export function formatStamp(stamp: Stamp): string {
 /** Sort helper: newest date first. */
 export function compareDateKeysDesc(a: DateKey, b: DateKey): number {
   return a < b ? 1 : a > b ? -1 : 0
+}
+
+/**
+ * Human-friendly age of a stamp for the sync cues: 'just now', '12 min ago',
+ * '3 h ago', 'yesterday', '4 days ago', then the plain date ('19 Sep 2026').
+ * Clock skew between phones can make a stamp sit in the future: that reads as 'just now'.
+ */
+export function formatRelative(stamp: Stamp, now: Date = new Date()): string {
+  const t = Date.parse(stamp)
+  if (!Number.isFinite(t)) return stamp
+  const then = new Date(t)
+  const diffMin = Math.floor((now.getTime() - t) / 60_000)
+  if (diffMin < 1) return 'just now'
+  const days = differenceInCalendarDays(now, then)
+  if (days <= 0) {
+    if (diffMin < 60) return `${diffMin} min ago`
+    return `${Math.floor(diffMin / 60)} h ago`
+  }
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days} days ago`
+  return format(then, 'd MMM yyyy')
 }

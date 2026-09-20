@@ -12,11 +12,13 @@ const STYLES: Record<ToastKind, string> = {
 const ICONS: Record<ToastKind, typeof Info> = { success: CheckCircle2, error: XCircle, info: Info }
 
 /**
- * Stacked just below the header so it stays visible even when the keyboard is open.
- * The live region is the always-mounted wrapper: screen readers only announce
- * content that changes inside an existing region, not a region inserted with
- * its text. Tapping anywhere on a toast dismisses it; the inner button is the
- * keyboard / VoiceOver path.
+ * Sticky just below the header, and below any banner shown under it (the
+ * wrapper sits in flow, with zero height so the page never shifts); when the
+ * page is scrolled it stays pinned under the header, so it is visible even
+ * with the keyboard open. The live region is the always-mounted wrapper:
+ * screen readers only announce content that changes inside an existing
+ * region, not a region inserted with its text. Tapping anywhere on a toast
+ * dismisses it; the inner button is the keyboard / VoiceOver path.
  */
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts)
@@ -25,7 +27,7 @@ export function Toaster() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-3 z-50 mx-auto flex max-w-md flex-col gap-2"
+      className="pointer-events-none sticky z-50 mx-auto flex h-0 min-h-0 w-full max-w-md flex-col gap-2 px-3"
       style={{ top: 'calc(env(safe-area-inset-top) + 6.25rem)' }}
     >
       {toasts.map((t) => {

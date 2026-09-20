@@ -15,14 +15,17 @@ import {
   type NewInjuryInput,
   type PersistedState,
   type Player,
+  type PlayerAttendance,
   type PlayerFields,
+  type Stamp,
   type TeamEventKind,
   type UserId,
 } from '../lib/types'
 import { ensureSeedPlayers, mergeState } from '../lib/merge'
-import { applyMonthlyAttendance as applyMonthlyAttendancePure } from '../lib/apply'
+import { DEFAULT_ATTENDANCE_STAMP, applyMonthlyAttendance as applyMonthlyAttendancePure } from '../lib/apply'
 import { buildExport, migratePersisted, sanitizeState } from '../lib/backup'
-import { nextStamp, nowStamp } from '../lib/dates'
+import { isDateKey, nextStamp, nowStamp } from '../lib/dates'
+import { initialSyncState, type SyncInfo } from '../lib/sync'
 import { newInjuryId, newPlayerId, workDayIdFor } from '../lib/ids'
 import { SEED_PLAYER_IDS, buildSeedPlayers } from '../lib/seedPlayers'
 import { canEditTeamEvents, isUserId } from '../lib/users'
@@ -35,6 +38,14 @@ export const CORRUPT_STORAGE_KEY = `${STORAGE_KEY}.corrupt`
 /** Persisted per device (remembers who owns the phone) but never exported. */
 export interface DeviceState {
   currentUserId: UserId | null
+  /** Last backup merged into this phone. */
+  lastImport: SyncInfo | null
+  /** Last time this phone shared or downloaded a backup. */
+  lastExportAt: Stamp | null
+  /** Data changed on this phone since its last successful export (drives the 🏁 badge). */
+  dirtySinceExport: boolean
+  /** Day on which the "you may be behind" reminder was dismissed. */
+  reminderDismissedOn: DateKey | null
 }
 
 /** Runtime-only flags, never persisted. */
@@ -60,13 +71,26 @@ export interface AppActions {
   /** Tombstones a manually added player and its live injuries. Seeded players cannot be deleted (returns false). */
   deletePlayer: (id: string) => boolean
   setPlayerSessionStatus: (sessionId: string, playerId: string, status: AttendanceStatus) => void
+  /** One write (and one persist) for many players, e.g. "everyone present". */
+  setManyPlayerSessionStatus: (sessionId: string, playerIds: readonly string[], status: AttendanceStatus) => void
+  /**
+   * Absence-only marking: an untouched session (no attendance entry at all)
+   * starts with everyone present. The marks carry DEFAULT_ATTENDANCE_STAMP, so
+   * a real mark from any phone, even an earlier one, wins on import; a session
+   * with any mark is left alone.
+   */
+  defaultAttendancePresent: (sessionId: string, playerIds: readonly string[]) => void
   updateSessionNotes: (sessionId: string, text: string) => void
   addInjury: (input: NewInjuryInput) => string | null
   updateInjury: (id: string, patch: Partial<InjuryFields>) => void
   deleteInjury: (id: string) => void
-  /** Merge an imported backup into this device's data. */
-  importData: (envelope: BackupEnvelope, policy?: ConflictPolicy) => MergeSummary
+  /** Merge an imported backup into this device's data and remember it as the last import. */
+  importData: (envelope: BackupEnvelope, policy?: ConflictPolicy, fileName?: string) => MergeSummary
   exportSnapshot: () => BackupEnvelope
+  /** Called after a backup was shared/downloaded: clears the "unexported changes" badge. */
+  markExported: () => void
+  /** Silence the "you may be behind" reminder for the given day. */
+  dismissImportReminder: (today: DateKey) => void
   ensureSeed: () => void
   setHydrated: (value: boolean) => void
   setStorageHealthy: (value: boolean) => void
@@ -132,7 +156,15 @@ function initialData(): PersistedShape {
     sessions: {},
     injuries: {},
     currentUserId: null,
+    ...initialSyncState(),
   }
+}
+
+function validSyncInfo(v: unknown): SyncInfo | null {
+  if (typeof v !== 'object' || v === null) return null
+  const o = v as Record<string, unknown>
+  if (typeof o.at !== 'string' || o.at === '') return null
+  return { at: o.at, by: isUserId(o.by) ? o.by : null, fileName: typeof o.fileName === 'string' ? o.fileName : '' }
 }
 
 export const useAppStore = create<AppStore>()(
@@ -150,7 +182,7 @@ export const useAppStore = create<AppStore>()(
         if (!user || !canEditTeamEvents(user)) return false
         const existing = get().teamEvents[date]
         const kind = nextKind(existing?.kind ?? 'none')
-        set((s) => ({ teamEvents: { ...s.teamEvents, [date]: { id: date, date, kind, ...stamp(user, existing) } } }))
+        set((s) => ({ dirtySinceExport: true, teamEvents: { ...s.teamEvents, [date]: { id: date, date, kind, ...stamp(user, existing) } } }))
         return true
       },
 
@@ -160,14 +192,15 @@ export const useAppStore = create<AppStore>()(
         const id = workDayIdFor(user, date)
         const existing = get().workDays[id]
         const worked = !(existing?.worked ?? false)
-        set((s) => ({ workDays: { ...s.workDays, [id]: { id, userId: user, date, worked, ...stamp(user, existing) } } }))
+        set((s) => ({ dirtySinceExport: true, workDays: { ...s.workDays, [id]: { id, userId: user, date, worked, ...stamp(user, existing) } } }))
       },
 
       applyMonthlyAttendance: (month) => {
         const user = get().currentUserId
         if (!user) return { created: 0, updated: 0, unchanged: 0, pruned: 0 }
         const { state, result } = applyMonthlyAttendancePure(persistedSlice(get()), month, nowStamp(), user)
-        set({ sessions: state.sessions })
+        const changed = result.created + result.updated + result.pruned > 0
+        set(changed ? { sessions: state.sessions, dirtySinceExport: true } : { sessions: state.sessions })
         return result
       },
 
@@ -175,7 +208,7 @@ export const useAppStore = create<AppStore>()(
         const user = get().currentUserId
         const existing = getOwn(get().players, id)
         if (!user || !existing) return
-        set((s) => ({ players: { ...s.players, [id]: { ...existing, ...patch, ...stamp(user, existing) } } }))
+        set((s) => ({ dirtySinceExport: true, players: { ...s.players, [id]: { ...existing, ...patch, ...stamp(user, existing) } } }))
       },
 
       addPlayer: ({ name, number }) => {
@@ -197,7 +230,7 @@ export const useAppStore = create<AppStore>()(
           deleted: false,
           ...stamp(user),
         }
-        set((s) => ({ players: { ...s.players, [id]: player } }))
+        set((s) => ({ dirtySinceExport: true, players: { ...s.players, [id]: player } }))
         return id
       },
 
@@ -213,7 +246,7 @@ export const useAppStore = create<AppStore>()(
           for (const [key, i] of Object.entries(s.injuries)) {
             if (i.playerId === id && !i.deleted) injuries[key] = { ...i, deleted: true, ...stamp(user, i) }
           }
-          return { players: { ...s.players, [id]: { ...existing, deleted: true, ...stamp(user, existing) } }, injuries }
+          return { dirtySinceExport: true, players: { ...s.players, [id]: { ...existing, deleted: true, ...stamp(user, existing) } }, injuries }
         })
         return true
       },
@@ -223,6 +256,7 @@ export const useAppStore = create<AppStore>()(
         const session = getOwn(get().sessions, sessionId)
         if (!user || !session) return
         set((s) => ({
+          dirtySinceExport: true,
           sessions: {
             ...s.sessions,
             [sessionId]: {
@@ -236,11 +270,31 @@ export const useAppStore = create<AppStore>()(
         }))
       },
 
+      setManyPlayerSessionStatus: (sessionId, playerIds, status) => {
+        const user = get().currentUserId
+        const session = getOwn(get().sessions, sessionId)
+        if (!user || !session || playerIds.length === 0) return
+        const playerAttendance = { ...session.playerAttendance }
+        for (const playerId of playerIds) playerAttendance[playerId] = { status, ...stamp(user, session.playerAttendance[playerId]) }
+        set((s) => ({ dirtySinceExport: true, sessions: { ...s.sessions, [sessionId]: { ...session, playerAttendance } } }))
+      },
+
+      defaultAttendancePresent: (sessionId, playerIds) => {
+        const user = get().currentUserId
+        const session = getOwn(get().sessions, sessionId)
+        if (!user || !session || playerIds.length === 0) return
+        // Never on top of an existing mark, whichever phone made it.
+        if (Object.keys(session.playerAttendance).length > 0) return
+        const playerAttendance: Record<string, PlayerAttendance> = {}
+        for (const playerId of playerIds) playerAttendance[playerId] = { status: 'present', updatedAt: DEFAULT_ATTENDANCE_STAMP, updatedBy: user }
+        set((s) => ({ dirtySinceExport: true, sessions: { ...s.sessions, [sessionId]: { ...session, playerAttendance } } }))
+      },
+
       updateSessionNotes: (sessionId, text) => {
         const user = get().currentUserId
         const session = getOwn(get().sessions, sessionId)
         if (!user || !session || session.notes.text === text) return
-        set((s) => ({ sessions: { ...s.sessions, [sessionId]: { ...session, notes: { text, ...stamp(user, session.notes) } } } }))
+        set((s) => ({ dirtySinceExport: true, sessions: { ...s.sessions, [sessionId]: { ...session, notes: { text, ...stamp(user, session.notes) } } } }))
       },
 
       addInjury: (input) => {
@@ -249,11 +303,13 @@ export const useAppStore = create<AppStore>()(
         const id = newInjuryId()
         const injury: Injury = { ...input, id, reportedBy: user, deleted: false, ...stamp(user) }
         set((s) => {
-          const next: Partial<AppState> = { injuries: { ...s.injuries, [id]: injury } }
-          // Reporting an injury inside a session marks the player as injured there, unless already marked.
+          const next: Partial<AppState> = { dirtySinceExport: true, injuries: { ...s.injuries, [id]: injury } }
+          // Reporting an injury inside a session marks the player as injured there
+          // unless they are marked absent (a Present mark, including the default
+          // one, becomes Injured).
           const session = input.sessionId ? getOwn(s.sessions, input.sessionId) : undefined
           const mark = session?.playerAttendance[input.playerId]
-          if (session && (mark?.status ?? 'unset') === 'unset') {
+          if (session && ['unset', 'present'].includes(mark?.status ?? 'unset')) {
             next.sessions = {
               ...s.sessions,
               [session.id]: {
@@ -271,17 +327,17 @@ export const useAppStore = create<AppStore>()(
         const user = get().currentUserId
         const existing = getOwn(get().injuries, id)
         if (!user || !existing || existing.deleted) return
-        set((s) => ({ injuries: { ...s.injuries, [id]: { ...existing, ...patch, ...stamp(user, existing) } } }))
+        set((s) => ({ dirtySinceExport: true, injuries: { ...s.injuries, [id]: { ...existing, ...patch, ...stamp(user, existing) } } }))
       },
 
       deleteInjury: (id) => {
         const user = get().currentUserId
         const existing = getOwn(get().injuries, id)
         if (!user || !existing || existing.deleted) return
-        set((s) => ({ injuries: { ...s.injuries, [id]: { ...existing, deleted: true, ...stamp(user, existing) } } }))
+        set((s) => ({ dirtySinceExport: true, injuries: { ...s.injuries, [id]: { ...existing, deleted: true, ...stamp(user, existing) } } }))
       },
 
-      importData: (envelope, policy = 'newest') => {
+      importData: (envelope, policy = 'newest', fileName = '') => {
         const { merged, summary } = mergeState(persistedSlice(get()), envelope.data, policy)
         set({
           players: repairSeedPlayers(merged.players),
@@ -289,11 +345,16 @@ export const useAppStore = create<AppStore>()(
           workDays: merged.workDays,
           sessions: merged.sessions,
           injuries: merged.injuries,
+          lastImport: { at: nowStamp(), by: envelope.exportedBy, fileName },
         })
         return summary
       },
 
       exportSnapshot: () => buildExport(persistedSlice(get()), get().currentUserId, nowStamp()),
+
+      markExported: () => set({ lastExportAt: nowStamp(), dirtySinceExport: false }),
+
+      dismissImportReminder: (today) => set({ reminderDismissedOn: today }),
 
       ensureSeed: () => {
         const slice = persistedSlice(get())
@@ -308,7 +369,14 @@ export const useAppStore = create<AppStore>()(
       name: STORAGE_KEY,
       version: SCHEMA_VERSION,
       storage: createJSONStorage(() => safeStorage),
-      partialize: (s): PersistedShape => ({ ...persistedSlice(s), currentUserId: s.currentUserId }),
+      partialize: (s): PersistedShape => ({
+        ...persistedSlice(s),
+        currentUserId: s.currentUserId,
+        lastImport: s.lastImport,
+        lastExportAt: s.lastExportAt,
+        dirtySinceExport: s.dirtySinceExport,
+        reminderDismissedOn: s.reminderDismissedOn,
+      }),
       migrate: (persisted, version) => migratePersisted(persisted, version) as PersistedShape,
       // The saved blob gets the same record-level validation as an imported file:
       // a hand-edited, downgraded or half-written value can neither crash
@@ -322,6 +390,10 @@ export const useAppStore = create<AppStore>()(
           ...current,
           ...(clean ? clean.state : {}),
           currentUserId: isUserId(raw?.currentUserId) ? raw.currentUserId : null,
+          lastImport: validSyncInfo(raw?.lastImport),
+          lastExportAt: typeof raw?.lastExportAt === 'string' && raw.lastExportAt !== '' ? raw.lastExportAt : null,
+          dirtySinceExport: raw?.dirtySinceExport === true,
+          reminderDismissedOn: isDateKey(raw?.reminderDismissedOn) ? raw.reminderDismissedOn : null,
         }
       },
       onRehydrateStorage: () => (state) => {
