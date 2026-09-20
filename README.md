@@ -2,6 +2,8 @@
 
 Mobile-first web app for the team's physiotherapists: work-day attendance and team calendar, player profiles, per-session player attendance and injury reports. No backend: every phone keeps its own data in the browser (`localStorage`), and the physios stay in sync by sharing JSON backup files in their WhatsApp group.
 
+There is a full owner's manual for the person who runs the app in [MANUAL.md](MANUAL.md) (installation, daily routine, troubleshooting, architecture, how to change things, roadmap).
+
 ## Daily workflow
 
 1. Open the app and pick who you are (Shahar · Manager, Maya · Physio, Neta · Physio). The phone remembers you.
