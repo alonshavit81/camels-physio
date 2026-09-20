@@ -33,6 +33,13 @@ The app helps you not forget a step:
 
 Every push to `main` runs `.github/workflows/deploy.yml` (install, tests, build) and publishes `dist/` to GitHub Pages. Phones pick up the new version the next time they open the app; their data stays on the phone.
 
+If a deployment fails with "Get Pages site failed … Not Found", the Pages site was switched off (repository Settings → Pages). Re-enable it with the GitHub CLI and re-run the workflow:
+
+```bash
+gh api -X POST repos/alonshavit81/camels-physio/pages -f build_type=workflow
+gh run rerun "$(gh run list --workflow deploy.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
+
 ## Development
 
 ```bash
