@@ -111,7 +111,7 @@ In the app, a *session* is the page for one training, game or work day: who was 
 
 - Every record carries the time and user of its last edit. When the same record was edited on two phones, **the newest edit wins**. Records that exist only on one side are simply added.
 - Deletions are remembered too: an injury deleted on one phone stays deleted after the files are merged, even if the other phone still had it, unless the other phone edited that same injury after the deletion (then the newer edit wins and it comes back; delete it again). The same goes for deleted extra players.
-- Attendance is merged **per player**, so Maya marking #4 on her phone and Neta marking #7 on hers both survive.
+- Attendance is merged **per player**, so Maya marking #4 on one phone and Neta marking #7 on another both survive.
 - Session types (training/game/work day) always follow the calendar; the calendar itself follows the newest edit.
 - The automatic "Present" marks the app writes for everyone do not count as real edits: any mark a person tapped, even earlier, wins over them.
 - Importing the same file twice changes nothing. Importing an old file changes nothing either, except adding records the phone never had.
